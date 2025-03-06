@@ -87,40 +87,6 @@ class DFLoss(nn.Module):
         ).mean(-1, keepdim=True)
 
 
-class DOSAConLoss(nn.Module):
-    def __init__(self, gamma=3.0, alpha=1.5):
-        super().__init__()
-        self.gamma = gamma  # Focuses loss on small objects (higher = more focus)
-        self.alpha = alpha  # Density importance (1.0-2.0 works best)
-
-    def forward(self, pred_boxes, target_boxes):
-        # 1. Calculate CIoU
-        iou = bbox_iou(pred_boxes, target_boxes, CIoU=True)  # Expected shape: (num_boxes, 1)
-        
-        # 2. Scale-aware weighting (inverse area normalization)
-        target_areas = target_boxes[..., 2] * target_boxes[..., 3]  # w*h
-        scale_weight = (1 / (target_areas + 1e-7)).unsqueeze(-1)  # Ensuring shape is (num_boxes, 1)
-    
-        # 3. Density weighting (simple count-based)
-        density_map = self._fast_density_map(target_boxes)
-        grid_x = (target_boxes[..., 0] * density_map.shape[1]).long().clamp(0, density_map.shape[1] - 1)
-        grid_y = (target_boxes[..., 1] * density_map.shape[2]).long().clamp(0, density_map.shape[2] - 1)
-        
-        density_weight = 1 + self.alpha * density_map[0, grid_y, grid_x].unsqueeze(-1)
-    
-        # 4. Final loss
-        loss = (1 - iou).pow(self.gamma) * scale_weight * density_weight
-        return loss.mean()
-
-
-    def _fast_density_map(self, boxes, grid_size=32):
-        """Creates low-res density map (faster computation)"""
-        density = torch.zeros(1, grid_size, grid_size, device=boxes.device)
-        grid_x = (boxes[..., 0] * grid_size).long().clamp(0, grid_size-1)
-        grid_y = (boxes[..., 1] * grid_size).long().clamp(0, grid_size-1)
-        for x, y in zip(grid_x, grid_y):
-            density[0, y, x] += 1  # Count objects per grid cell
-        return density / density.max()
 
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses during training."""
@@ -128,7 +94,6 @@ class BboxLoss(nn.Module):
     def __init__(self, reg_max=16):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
-        self.dosa_loss = DOSAConLoss()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
 
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
@@ -137,10 +102,36 @@ class BboxLoss(nn.Module):
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-        loss_iou = self.dosa_loss(
-            pred_bboxes[fg_mask], 
-            target_bboxes[fg_mask]
-        )
+        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+
+        # Calculate object area (in pixels) from target bounding boxes (xyxy format)
+        target_wh = target_bboxes[fg_mask][:, 2:] - target_bboxes[fg_mask][:, :2]
+        object_area = torch.prod(target_wh, dim=1)  # width * height
+        object_area = torch.clamp(object_area, min=1.0)  # Ensure positive area
+
+        # Calculate occlusion factor (example implementation - adjust based on your data)
+        # Assuming occlusion_score is precomputed (0.0-1.0, 1=fully occluded)
+        # If not available, remove this term or use dummy values
+        occlusion_score = target_bboxes[fg_mask][:, 4]  # Example: 5th dimension stores occlusion
+
+        # Coefficients (recommended starting values)
+        EPSILON = 1e-7  # Prevent division by zero
+        # BETA = 0.1      # Occlusion impact factor (0-1)
+        GAMMA = 0.5     # Size impact factor
+
+        # Calculate size factor (normalized inverse square root of area)
+        size_factor = GAMMA / (torch.sqrt(object_area) + EPSILON)
+
+        # Calculate occlusion factor (linear weighting)
+        # maybe different branch to get occlusion mask and get score
+        # occlusion_factor = 1.0 + BETA * occlusion_score
+
+        # Combine weights
+        modified_weight = weight * size_factor
+
+        # Final loss calculation
+        loss_iou = ((1.0 - iou) * modified_weight).sum() / (target_scores_sum + EPSILON)
+
 
         # DFL loss
         if self.dfl_loss:
