@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from itertools import combinations
+# from itertools import combinations
 from utils.metrics import bbox_iou
 
 class DOSAConLoss(nn.Module):
