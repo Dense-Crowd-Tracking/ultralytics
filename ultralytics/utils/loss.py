@@ -103,10 +103,10 @@ class BboxLoss(nn.Module):
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         loss_iou = self.dosa_loss(
-            pred_boxes=pred_bboxes,
-            target_boxes=target_bboxes,
-            embeddings=preds[..., :16],  # Use first 16 channels as embeddings
-            density_map=self.generate_density_map(target_bboxes)
+            pred_bboxes[fg_mask],
+            target_bboxes[fg_mask],
+            pred_dist[fg_mask][..., :16],  # Use first 16 channels
+            self.generate_density_map(target_bboxes[fg_mask])
         )
 
         # DFL loss
@@ -135,7 +135,7 @@ class BboxLoss(nn.Module):
         x = torch.arange(kernel_size) - kernel_size // 2
         g = torch.exp(-x**2 / (2*sigma**2))
         return g / g.sum()
-    
+
     def _apply_gaussian(self, density, cx, cy, gaussian, img_size):
         # Simple 2D Gaussian application (optimize this if needed)
         radius = len(gaussian) // 2
@@ -143,7 +143,7 @@ class BboxLoss(nn.Module):
         x_max = min(img_size, cx + radius + 1)
         y_min = max(0, cy - radius)
         y_max = min(img_size, cy + radius + 1)
-        
+
         density[0, y_min:y_max, x_min:x_max] += gaussian[:y_max-y_min, :x_max-x_min]
         return density  
 
