@@ -119,7 +119,33 @@ class BboxLoss(nn.Module):
 
         return loss_iou, loss_dfl
 
+    def generate_density_map(self, boxes, img_size=640, sigma=5):
+        """
+        Create Gaussian density map from ground truth boxes
+        boxes: [N, 4] tensor (xywh normalized)
+        """
+        density = torch.zeros((1, img_size, img_size), device=boxes.device)
+        for box in boxes:
+            cx, cy = int(box[0]*img_size), int(box[1]*img_size)
+            gaussian = self._create_gaussian(sigma, 2*sigma+1)
+            density = self._apply_gaussian(density, cx, cy, gaussian, img_size)
+        return density / density.max()
+
+    def _create_gaussian(self, sigma, kernel_size=11):
+        x = torch.arange(kernel_size) - kernel_size // 2
+        g = torch.exp(-x**2 / (2*sigma**2))
+        return g / g.sum()
     
+    def _apply_gaussian(self, density, cx, cy, gaussian, img_size):
+        # Simple 2D Gaussian application (optimize this if needed)
+        radius = len(gaussian) // 2
+        x_min = max(0, cx - radius)
+        x_max = min(img_size, cx + radius + 1)
+        y_min = max(0, cy - radius)
+        y_max = min(img_size, cy + radius + 1)
+        
+        density[0, y_min:y_max, x_min:x_max] += gaussian[:y_max-y_min, :x_max-x_min]
+        return density  
 
 
 class RotatedBboxLoss(BboxLoss):
