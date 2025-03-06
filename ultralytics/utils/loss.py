@@ -99,8 +99,15 @@ class BboxLoss(nn.Module):
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         """IoU loss."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+        # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+
+        loss_iou = self.dosa_loss(
+            pred_boxes=pred_bboxes,
+            target_boxes=target_bboxes,
+            embeddings=preds[..., :16],  # Use first 16 channels as embeddings
+            density_map=self.generate_density_map(target_bboxes)
+        )
 
         # DFL loss
         if self.dfl_loss:
@@ -111,6 +118,8 @@ class BboxLoss(nn.Module):
             loss_dfl = torch.tensor(0.0).to(pred_dist.device)
 
         return loss_iou, loss_dfl
+
+    
 
 
 class RotatedBboxLoss(BboxLoss):
@@ -164,6 +173,10 @@ class v8DetectionLoss:
 
         m = model.model[-1]  # Detect() module
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
+        
+        from .dosa_loss import DOSAConLoss
+        self.dosa_loss = DOSAConLoss()
+        
         self.hyp = h
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
