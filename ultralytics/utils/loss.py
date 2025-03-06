@@ -102,12 +102,11 @@ class BboxLoss(nn.Module):
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-        loss_iou = self.dosa_loss(
-            pred_bboxes[fg_mask],
-            target_bboxes[fg_mask],
-            pred_dist[fg_mask][..., :16],  # Use first 16 channels
-            self.generate_density_map(target_bboxes[fg_mask])
-        )
+        density_map = self.generate_density_map(target_bboxes[fg_mask])
+        loss_iou = ((1 - bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], CIoU=True))
+                  * (1 + 1.2 * density_map)  # Density weighting
+                  / (target_bboxes[fg_mask][...,2]*target_bboxes[fg_mask][...,3] + 1e-7)  # Area norm
+                 ).mean()
 
         # DFL loss
         if self.dfl_loss:
@@ -199,9 +198,6 @@ class v8DetectionLoss:
 
         m = model.model[-1]  # Detect() module
         self.bce = nn.BCEWithLogitsLoss(reduction="none")
-        
-        from .dosa_loss import DOSAConLoss
-        self.dosa_loss = DOSAConLoss()
         
         self.hyp = h
         self.stride = m.stride  # model strides
