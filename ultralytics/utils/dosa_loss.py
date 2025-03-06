@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from utils.metrics import bbox_iou
+from .metrics import bbox_iou
 
 class DOSAConLoss(nn.Module):
     def __init__(self, gamma=3.0, alpha=1.5):
