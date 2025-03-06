@@ -112,7 +112,7 @@ class BboxLoss(nn.Module):
         # Calculate occlusion factor (example implementation - adjust based on your data)
         # Assuming occlusion_score is precomputed (0.0-1.0, 1=fully occluded)
         # If not available, remove this term or use dummy values
-        occlusion_score = target_bboxes[fg_mask][:, 4]  # Example: 5th dimension stores occlusion
+        # occlusion_score = target_bboxes[fg_mask][:, 4]  # Example: 5th dimension stores occlusion
 
         # Coefficients (recommended starting values)
         EPSILON = 1e-7  # Prevent division by zero
