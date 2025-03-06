@@ -11,7 +11,6 @@ from ultralytics.utils.torch_utils import autocast
 
 from .metrics import bbox_iou, probiou
 from .tal import bbox2dist
-from .dosa_loss import DOSAConLoss
 
 class VarifocalLoss(nn.Module):
     """
@@ -88,6 +87,37 @@ class DFLoss(nn.Module):
         ).mean(-1, keepdim=True)
 
 
+class DOSAConLoss(nn.Module):
+    def __init__(self, gamma=3.0, alpha=1.5):
+        super().__init__()
+        self.gamma = gamma  # Focuses loss on small objects (higher = more focus)
+        self.alpha = alpha  # Density importance (1.0-2.0 works best)
+
+    def forward(self, pred_boxes, target_boxes):
+        # 1. Calculate CIoU
+        iou = bbox_iou(pred_boxes, target_boxes, CIoU=True)
+        
+        # 2. Scale-aware weighting (inverse area normalization)
+        target_areas = target_boxes[..., 2] * target_boxes[..., 3]  # w*h
+        scale_weight = 1 / (target_areas + 1e-7)  # Smaller objects get higher weight
+        
+        # 3. Density weighting (simple count-based)
+        density_map = self._fast_density_map(target_boxes)
+        density_weight = 1 + self.alpha * density_map[..., None]
+        
+        # 4. Final loss
+        loss = (1 - iou).pow(self.gamma) * scale_weight * density_weight
+        return loss.mean()
+
+    def _fast_density_map(self, boxes, grid_size=32):
+        """Creates low-res density map (faster computation)"""
+        density = torch.zeros(1, grid_size, grid_size, device=boxes.device)
+        grid_x = (boxes[..., 0] * grid_size).long().clamp(0, grid_size-1)
+        grid_y = (boxes[..., 1] * grid_size).long().clamp(0, grid_size-1)
+        for x, y in zip(grid_x, grid_y):
+            density[0, y, x] += 1  # Count objects per grid cell
+        return density / density.max()
+
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses during training."""
 
@@ -118,33 +148,7 @@ class BboxLoss(nn.Module):
 
         return loss_iou, loss_dfl
 
-    def generate_density_map(self, boxes, img_size=640, sigma=5):
-        """
-        Create Gaussian density map from ground truth boxes
-        boxes: [N, 4] tensor (xywh normalized)
-        """
-        density = torch.zeros((1, img_size, img_size), device=boxes.device)
-        for box in boxes:
-            cx, cy = int(box[0]*img_size), int(box[1]*img_size)
-            gaussian = self._create_gaussian(sigma, 2*sigma+1)
-            density = self._apply_gaussian(density, cx, cy, gaussian, img_size)
-        return density / density.max()
-
-    def _create_gaussian(self, sigma, kernel_size=11):
-        x = torch.arange(kernel_size) - kernel_size // 2
-        g = torch.exp(-x**2 / (2*sigma**2))
-        return g / g.sum()
-
-    def _apply_gaussian(self, density, cx, cy, gaussian, img_size):
-        # Simple 2D Gaussian application (optimize this if needed)
-        radius = len(gaussian) // 2
-        x_min = max(0, cx - radius)
-        x_max = min(img_size, cx + radius + 1)
-        y_min = max(0, cy - radius)
-        y_max = min(img_size, cy + radius + 1)
-
-        density[0, y_min:y_max, x_min:x_max] += gaussian[:y_max-y_min, :x_max-x_min]
-        return density  
+    
 
 
 class RotatedBboxLoss(BboxLoss):
