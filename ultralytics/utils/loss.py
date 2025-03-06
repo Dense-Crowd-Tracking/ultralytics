@@ -109,22 +109,11 @@ class BboxLoss(nn.Module):
         object_area = torch.prod(target_wh, dim=1)  # width * height
         object_area = torch.clamp(object_area, min=1.0)  # Ensure positive area
 
-        # Calculate occlusion factor (example implementation - adjust based on your data)
-        # Assuming occlusion_score is precomputed (0.0-1.0, 1=fully occluded)
-        # If not available, remove this term or use dummy values
-        # occlusion_score = target_bboxes[fg_mask][:, 4]  # Example: 5th dimension stores occlusion
-
-        # Coefficients (recommended starting values)
         EPSILON = 1e-7  # Prevent division by zero
-        # BETA = 0.1      # Occlusion impact factor (0-1)
         GAMMA = 0.5     # Size impact factor
 
         # Calculate size factor (normalized inverse square root of area)
         size_factor = GAMMA / (torch.sqrt(object_area) + EPSILON)
-
-        # Calculate occlusion factor (linear weighting)
-        # maybe different branch to get occlusion mask and get score
-        # occlusion_factor = 1.0 + BETA * occlusion_score
 
         # Combine weights
         modified_weight = weight * size_factor
