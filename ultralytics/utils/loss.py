@@ -11,7 +11,7 @@ from ultralytics.utils.torch_utils import autocast
 
 from .metrics import bbox_iou, probiou
 from .tal import bbox2dist
-
+from .dosa_loss import DOSAConLoss
 
 class VarifocalLoss(nn.Module):
     """
@@ -94,6 +94,7 @@ class BboxLoss(nn.Module):
     def __init__(self, reg_max=16):
         """Initialize the BboxLoss module with regularization maximum and DFL settings."""
         super().__init__()
+        self.dosa_loss = DOSAConLoss()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
 
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
@@ -102,11 +103,10 @@ class BboxLoss(nn.Module):
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-        density_map = self.generate_density_map(target_bboxes[fg_mask])
-        loss_iou = ((1 - bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], CIoU=True))
-                  * (1 + 1.2 * density_map)  # Density weighting
-                  / (target_bboxes[fg_mask][...,2]*target_bboxes[fg_mask][...,3] + 1e-7)  # Area norm
-                 ).mean()
+        loss_iou = self.dosa_loss(
+            pred_bboxes[fg_mask], 
+            target_bboxes[fg_mask]
+        )
 
         # DFL loss
         if self.dfl_loss:
