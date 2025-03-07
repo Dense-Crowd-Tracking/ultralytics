@@ -73,4 +73,41 @@ iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=Tr
         ALPHA = 2.0  
         loss_iou = ((1.0 - iou) ** ALPHA * modified_weight).sum() / (weight.sum() + EPSILON)
 ```
-        
+##### Problems and approach
+
+###### Dynamic Gamma (gamma = BASE_GAMMA + (1 - iou.mean()))
+
+✅ Novelty: Adaptively increases focus on hard examples as training progresses.
+
+⚠️ Risk: May destabilize training if mean IoU fluctuates wildly.
+
+###### Log-Scaled Size Factor
+
+✅ Advantage: Better handles extreme object sizes vs linear scaling.
+
+⚠️ Issue: log(object_area + 1) loses differentiation for small areas.
+
+###### Asymptotic Confidence Weighting
+
+✅ Strength: Prevents over-suppression of high-IoU predictions.
+
+⚠️ Complexity: Similar to focal loss but with extra normalization.
+
+#### normalized inverse sqaure root
+
+```sh
+iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+
+# 1. Size-aware weight (normalized inverse sqrt)
+target_wh = target_bboxes[fg_mask][:, 2:] - target_bboxes[fg_mask][:, :2]
+object_area = torch.prod(target_wh, dim=1).clamp(min=1.0)
+mean_area = object_area.mean().detach()
+size_weight = torch.sqrt(mean_area / (object_area + 1e-7))
+
+# 2. Stabilized focal weighting
+FOCAL_GAMMA = 1.5  # [1-2]
+focal_weight = (1.0 - iou).pow(FOCAL_GAMMA)
+
+# 3. Combined loss
+loss_iou = (focal_weight * size_weight * (1.0 - iou)).sum() / (focal_weight.sum() + 1e-7)
+```
