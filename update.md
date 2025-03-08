@@ -111,3 +111,25 @@ focal_weight = (1.0 - iou).pow(FOCAL_GAMMA)
 # 3. Combined loss
 loss_iou = (focal_weight * size_weight * (1.0 - iou)).sum() / (focal_weight.sum() + 1e-7)
 ```
+
+#### preserving CIOU strength
+```sh
+# Retain CIoU's core components
+iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
+ciou_term = (1.0 - iou)  # Standard CIoU loss
+
+# Your Additions (simplified)
+target_wh = target_bboxes[fg_mask][:, 2:] - target_bboxes[fg_mask][:, :2]
+object_area = torch.prod(target_wh, dim=1).clamp(min=1.0)
+
+# 1. Size-Aware Weight (Less Aggressive)
+SIZE_GAMMA = 0.3  # Reduced from 0.5
+size_weight = SIZE_GAMMA / (torch.sqrt(object_area) + 1e-7)
+
+# 2. Focal Stabilization 
+FOCAL_ALPHA = 1.5  # Less than your original 2.0
+focal_weight = ciou_term.detach() ** FOCAL_ALPHA  # Detach gradients
+
+# 3. Final Hybrid Loss
+loss_iou = (ciou_term * focal_weight * size_weight).sum() / (fg_mask.sum() + 1e-7)
+```
