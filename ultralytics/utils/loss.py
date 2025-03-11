@@ -121,7 +121,7 @@ class BboxLoss(nn.Module):
         # 3. Final Hybrid Loss
         loss_iou = (ciou_term * focal_weight * size_weight).sum() / (fg_mask.sum() + 1e-7)
         
-        loss_iou = loss_iou/150
+        loss_iou = loss_iou/200
 
 
         # DFL loss
