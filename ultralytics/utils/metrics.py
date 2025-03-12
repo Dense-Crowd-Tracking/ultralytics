@@ -460,11 +460,11 @@ def plot_pr_curve(px, py, ap, save_dir=Path("pr_curve.png"), names={}, on_plot=N
 
     if 0 < len(names) < 21:  # display per-class legend if < 21 classes
         for i, y in enumerate(py.T):
-            ax.plot(px, y, linewidth=1, label=f"{names[i]} {ap[i, 0]:.3f}")  # plot(recall, precision)
+            ax.plot(px, y, linewidth=1, label=f"{names[i]} {ap[i, 5]:.3f}")  # plot(recall, precision)
     else:
         ax.plot(px, py, linewidth=1, color="grey")  # plot(recall, precision)
 
-    ax.plot(px, py.mean(1), linewidth=3, color="blue", label=f"all classes {ap[:, 0].mean():.3f} mAP@0.5")
+    ax.plot(px, py.mean(1), linewidth=3, color="blue", label=f"all classes {ap[:, 5].mean():.3f} mAP@0.5")
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
     ax.set_xlim(0, 1)
@@ -558,7 +558,7 @@ def ap_per_class(
         p (np.ndarray): Precision values at threshold given by max F1 metric for each class. Shape: (nc,).
         r (np.ndarray): Recall values at threshold given by max F1 metric for each class. Shape: (nc,).
         f1 (np.ndarray): F1-score values at threshold given by max F1 metric for each class. Shape: (nc,).
-        ap (np.ndarray): Average precision for each class at different IoU thresholds. Shape: (nc, 10).
+        ap (np.ndarray): Average precision for each class at different IoU thresholds. Shape: (nc, 15).
         unique_classes (np.ndarray): An array of unique classes that have data. Shape: (nc,).
         p_curve (np.ndarray): Precision curves for each class. Shape: (nc, 1000).
         r_curve (np.ndarray): Recall curves for each class. Shape: (nc, 1000).
@@ -631,20 +631,22 @@ class Metric(SimpleClass):
         p (list): Precision for each class. Shape: (nc,).
         r (list): Recall for each class. Shape: (nc,).
         f1 (list): F1 score for each class. Shape: (nc,).
-        all_ap (list): AP scores for all classes and all IoU thresholds. Shape: (nc, 10).
+        all_ap (list): AP scores for all classes and all IoU thresholds. Shape: (nc, 15).
         ap_class_index (list): Index of class for each AP score. Shape: (nc,).
         nc (int): Number of classes.
 
     Methods:
+        ap30(): AP at IoU threshold of 0.3 for all classes. Returns: List of AP scores. Shape: (nc,) or [].
         ap50(): AP at IoU threshold of 0.5 for all classes. Returns: List of AP scores. Shape: (nc,) or [].
-        ap(): AP at IoU thresholds from 0.5 to 0.95 for all classes. Returns: List of AP scores. Shape: (nc,) or [].
+        ap(): AP at IoU thresholds from 0.25 to 0.95 for all classes. Returns: List of AP scores. Shape: (nc,) or [].
         mp(): Mean precision of all classes. Returns: Float.
         mr(): Mean recall of all classes. Returns: Float.
+        map30(): Mean AP at IoU threshold of 0.3 for all classes. Returns: Float.
         map50(): Mean AP at IoU threshold of 0.5 for all classes. Returns: Float.
         map75(): Mean AP at IoU threshold of 0.75 for all classes. Returns: Float.
-        map(): Mean AP at IoU thresholds from 0.5 to 0.95 for all classes. Returns: Float.
+        map(): Mean AP at IoU thresholds from 0.25 to 0.95 for all classes. Returns: Float.
         mean_results(): Mean of results, returns mp, mr, map50, map.
-        class_result(i): Class-aware result, returns p[i], r[i], ap50[i], ap[i].
+        class_result(i): Class-aware result, returns p[i], r[i], ap30[i], ap50[i], ap[i].
         maps(): mAP of each class. Returns: Array of mAP scores, shape: (nc,).
         fitness(): Model fitness as a weighted combination of metrics. Returns: Float.
         update(results): Update metric attributes with new evaluation results.
@@ -655,10 +657,20 @@ class Metric(SimpleClass):
         self.p = []  # (nc, )
         self.r = []  # (nc, )
         self.f1 = []  # (nc, )
-        self.all_ap = []  # (nc, 10)
+        self.all_ap = []  # (nc, 15)
         self.ap_class_index = []  # (nc, )
         self.nc = 0
 
+    @property
+    def ap30(self):
+        """
+        Returns the Average Precision (AP) at an IoU threshold of 0.3 for all classes.
+
+        Returns:
+            (np.ndarray, list): Array of shape (nc,) with AP30 values per class, or an empty list if not available.
+        """
+        return self.all_ap[:, 1] if len(self.all_ap) else []
+    
     @property
     def ap50(self):
         """
@@ -667,15 +679,15 @@ class Metric(SimpleClass):
         Returns:
             (np.ndarray, list): Array of shape (nc,) with AP50 values per class, or an empty list if not available.
         """
-        return self.all_ap[:, 0] if len(self.all_ap) else []
+        return self.all_ap[:, 5] if len(self.all_ap) else []
 
     @property
     def ap(self):
         """
-        Returns the Average Precision (AP) at an IoU threshold of 0.5-0.95 for all classes.
+        Returns the Average Precision (AP) at an IoU threshold of 0.25-0.95 for all classes.
 
         Returns:
-            (np.ndarray, list): Array of shape (nc,) with AP50-95 values per class, or an empty list if not available.
+            (np.ndarray, list): Array of shape (nc,) with AP25-95 values per class, or an empty list if not available.
         """
         return self.all_ap.mean(1) if len(self.all_ap) else []
 
@@ -698,6 +710,16 @@ class Metric(SimpleClass):
             (float): The mean recall of all classes.
         """
         return self.r.mean() if len(self.r) else 0.0
+    
+    @property
+    def map30(self):
+        """
+        Returns the mean Average Precision (mAP) at an IoU threshold of 0.3.
+
+        Returns:
+            (float): The mAP at an IoU threshold of 0.3.
+        """
+        return self.all_ap[:, 1].mean() if len(self.all_ap) else 0.0
 
     @property
     def map50(self):
@@ -707,7 +729,7 @@ class Metric(SimpleClass):
         Returns:
             (float): The mAP at an IoU threshold of 0.5.
         """
-        return self.all_ap[:, 0].mean() if len(self.all_ap) else 0.0
+        return self.all_ap[:, 5].mean() if len(self.all_ap) else 0.0
 
     @property
     def map75(self):
@@ -717,25 +739,25 @@ class Metric(SimpleClass):
         Returns:
             (float): The mAP at an IoU threshold of 0.75.
         """
-        return self.all_ap[:, 5].mean() if len(self.all_ap) else 0.0
+        return self.all_ap[:, 10].mean() if len(self.all_ap) else 0.0
 
     @property
     def map(self):
         """
-        Returns the mean Average Precision (mAP) over IoU thresholds of 0.5 - 0.95 in steps of 0.05.
+        Returns the mean Average Precision (mAP) over IoU thresholds of 0.25 - 0.95 in steps of 0.05.
 
         Returns:
-            (float): The mAP over IoU thresholds of 0.5 - 0.95 in steps of 0.05.
+            (float): The mAP over IoU thresholds of 0.25 - 0.95 in steps of 0.05.
         """
         return self.all_ap.mean() if len(self.all_ap) else 0.0
 
     def mean_results(self):
-        """Mean of results, return mp, mr, map50, map."""
-        return [self.mp, self.mr, self.map50, self.map]
+        """Mean of results, return mp, mr, map30, map50, map."""
+        return [self.mp, self.mr, self.map30, self.map50, self.map]
 
     def class_result(self, i):
-        """Class-aware result, return p[i], r[i], ap50[i], ap[i]."""
-        return self.p[i], self.r[i], self.ap50[i], self.ap[i]
+        """Class-aware result, return p[i], r[i], ap30[i], ap50[i], ap[i]."""
+        return self.p[i], self.r[i], self.ap30[i], self.ap50[i], self.ap[i]
 
     @property
     def maps(self):
@@ -747,7 +769,7 @@ class Metric(SimpleClass):
 
     def fitness(self):
         """Model fitness as a weighted combination of metrics."""
-        w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
+        w = [0.0, 0.1, 0.3, 0.5, 0.1]  # weights for [P, R, mAP@0.3, mAP@0.5, mAP@0.25:0.95]
         return (np.array(self.mean_results()) * w).sum()
 
     def update(self, results):
@@ -759,7 +781,7 @@ class Metric(SimpleClass):
                 - p (list): Precision for each class. Shape: (nc,).
                 - r (list): Recall for each class. Shape: (nc,).
                 - f1 (list): F1 score for each class. Shape: (nc,).
-                - all_ap (list): AP scores for all classes and all IoU thresholds. Shape: (nc, 10).
+                - all_ap (list): AP scores for all classes and all IoU thresholds. Shape: (nc, 15).
                 - ap_class_index (list): Index of class for each AP score. Shape: (nc,).
 
         Side Effects:
@@ -852,10 +874,10 @@ class DetMetrics(SimpleClass):
     @property
     def keys(self):
         """Returns a list of keys for accessing specific metrics."""
-        return ["metrics/precision(B)", "metrics/recall(B)", "metrics/mAP50(B)", "metrics/mAP50-95(B)"]
+        return ["metrics/precision(B)", "metrics/recall(B)", "metrics/mAP30(B)", "metrics/mAP50(B)", "metrics/mAP25-95(B)"]
 
     def mean_results(self):
-        """Calculate mean of detected objects & return precision, recall, mAP50, and mAP50-95."""
+        """Calculate mean of detected objects & return precision, recall, mAP30, mAP50, and mAP25-95."""
         return self.box.mean_results()
 
     def class_result(self, i):
