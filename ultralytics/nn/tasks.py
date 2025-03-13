@@ -713,12 +713,10 @@ def temporary_modules(modules=None, attributes=None):
         modules (dict, optional): A dictionary mapping old module paths to new module paths.
         attributes (dict, optional): A dictionary mapping old module attributes to new module attributes.
 
-    Example:
-        ```python
-        with temporary_modules({"old.module": "new.module"}, {"old.module.attribute": "new.module.attribute"}):
-            import old.module  # this will now import new.module
-            from old.module import attribute  # this will now import new.module.attribute
-        ```
+    Examples:
+        >>> with temporary_modules({"old.module": "new.module"}, {"old.module.attribute": "new.module.attribute"}):
+        >>> import old.module  # this will now import new.module
+        >>> from old.module import attribute  # this will now import new.module.attribute
 
     Note:
         The changes are only in effect inside the context manager and are undone once the context manager exits.
@@ -793,12 +791,9 @@ def torch_safe_load(weight, safe_only=False):
         weight (str): The file path of the PyTorch model.
         safe_only (bool): If True, replace unknown classes with SafeClass during loading.
 
-    Example:
-    ```python
-    from ultralytics.nn.tasks import torch_safe_load
-
-    ckpt, file = torch_safe_load("path/to/best.pt", safe_only=True)
-    ```
+    Examples:
+        >>> from ultralytics.nn.tasks import torch_safe_load
+        >>> ckpt, file = torch_safe_load("path/to/best.pt", safe_only=True)
 
     Returns:
         ckpt (dict): The loaded model checkpoint.
@@ -1119,7 +1114,7 @@ def guess_model_scale(model_path):
         (str): The size character of the model's scale, which can be n, s, m, l, or x.
     """
     try:
-        return re.search(r"yolo[v]?\d+([nslmx])", Path(model_path).stem).group(1)  # noqa, returns n, s, m, l, or x
+        return re.search(r"yolo[v]?\d+([nslmx])", Path(model_path).stem).group(1)  # returns n, s, m, l, or x
     except AttributeError:
         return ""
 
