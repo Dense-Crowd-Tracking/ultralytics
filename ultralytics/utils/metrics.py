@@ -134,7 +134,8 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_C
                     ad = (s1 - s2) / (s2 + eps)
                     # ad = torch.where(s1 < s2, iou - 1, 1 / iou - 1)
                     k = torch.where(ad >= 0, torch.tensor(1.25, device=box1.device), torch.tensor(-2.5, device=box1.device))
-                    gamma = (torch.tanh(k * ad - 2.3) + torch.tanh(torch.tensor(2.3, dtype=ad.dtype, device=ad.device))) / 2
+                    gamma = (torch.tanh(k * ad - torch.tensor(2.3, dtype=ad.dtype, device=ad.device)) 
+                             + torch.tanh(torch.tensor(2.3, dtype=ad.dtype, device=ad.device))) / 2
                     return ciou + gamma * (1 - iou)  # Scaled CIoU
                 return ciou  # CIoU
             return iou - rho2 / c2  # DIoU
