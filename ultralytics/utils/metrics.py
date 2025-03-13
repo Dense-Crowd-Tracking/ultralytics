@@ -71,7 +71,7 @@ def box_iou(box1, box2, eps=1e-7):
     return inter / ((a2 - a1).prod(2) + (b2 - b1).prod(2) - inter + eps)
 
 
-def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
+def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_CIoU=False, eps=1e-7):
     """
     Calculates the Intersection over Union (IoU) between bounding boxes.
 
@@ -115,19 +115,28 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
 
     # IoU
     iou = inter / union
-    if CIoU or DIoU or GIoU:
+    if CIoU or DIoU or GIoU or scaled_CIoU:
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
-        if CIoU or DIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+        if CIoU or DIoU or scaled_CIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = cw.pow(2) + ch.pow(2) + eps  # convex diagonal squared
             rho2 = (
                 (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
             ) / 4  # center dist**2
-            if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
+            if CIoU or scaled_CIoU:  
+                # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
                 v = (4 / math.pi**2) * ((w2 / h2).atan() - (w1 / h1).atan()).pow(2)
                 with torch.no_grad():
                     alpha = v / (v - iou + (1 + eps))
-                return iou - (rho2 / c2 + v * alpha)  # CIoU
+                ciou = iou - (rho2 / c2 + v * alpha)
+                if scaled_CIoU:
+                    s1, s2 = w1 * h1, w2 * h2
+                    ad = (s1 - s2) / (s2 + eps)
+                    # ad = torch.where(s1 < s2, iou - 1, 1 / iou - 1)
+                    k = torch.where(ad >= 0, torch.tensor(1.25, device=box1.device), torch.tensor(-2.5, device=box1.device))
+                    gamma = (torch.tanh(k * ad - 2.3) + torch.tanh(2.3)) / 2
+                    return ciou + gamma * (1 - iou)  # Scaled CIoU
+                return ciou  # CIoU
             return iou - rho2 / c2  # DIoU
         c_area = cw * ch + eps  # convex area
         return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
