@@ -755,16 +755,16 @@ class Metric(SimpleClass):
             maps[c] = self.ap[i]
         return maps
 
-    # def fitness(self):
-    #     """Model fitness as a weighted combination of metrics."""
-    #     w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
-    #     return (np.array(self.mean_results()) * w).sum()
-
     def fitness(self):
-        """Model fitness with higher weight for Recall, F1-score, and mAP@50."""
-        f1 = 2 * (self.mp * self.mr) / (self.mp + self.mr + 1e-7)  # Compute F1-score
-        w = [0.0, 0.25, 0.25, 0.4, 0.1]  # Weights for [P, R, F1-score, mAP@50, mAP@0.5:0.95]
-        return (np.array([self.mp, self.mr, f1, self.map50, self.map]) * w).sum()
+        """Model fitness as a weighted combination of metrics."""
+        w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
+        return (np.array(self.mean_results()) * w).sum()
+
+    # def fitness(self):
+    #     """Model fitness with higher weight for Recall, F1-score, and mAP@50."""
+    #     f1 = 2 * (self.mp * self.mr) / (self.mp + self.mr + 1e-7)  # Compute F1-score
+    #     w = [0.0, 0.25, 0.25, 0.4, 0.1]  # Weights for [P, R, F1-score, mAP@50, mAP@0.5:0.95]
+    #     return (np.array([self.mp, self.mr, f1, self.map50, self.map]) * w).sum()
 
     def update(self, results):
         """
