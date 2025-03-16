@@ -102,8 +102,8 @@ class BboxLoss(nn.Module):
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
         # loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, GIoU=True)
-        giou_term = ((1.0 - iou) * weight).sum() / target_scores_sum
+        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, DIoU=True)
+        diou_term = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # # Retain CIoU's core components
         # iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
@@ -119,10 +119,10 @@ class BboxLoss(nn.Module):
         
         # 2. Focal Stabilization 
         FOCAL_ALPHA = 1.5  # Less than your original 2.0
-        focal_weight = giou_term.detach() ** FOCAL_ALPHA  # Detach gradients
+        focal_weight = diou_term.detach() ** FOCAL_ALPHA  # Detach gradients
         
         # 3. Final Hybrid Loss
-        loss_iou = (giou_term * focal_weight * size_weight).sum() / (fg_mask.sum() + 1e-7)
+        loss_iou = (diou_term * focal_weight * size_weight).sum() / (fg_mask.sum() + 1e-7)
         
         loss_iou = loss_iou/99
 
