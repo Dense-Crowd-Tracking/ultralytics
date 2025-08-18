@@ -71,7 +71,7 @@ def box_iou(box1, box2, eps=1e-7):
     return inter / ((a2 - a1).prod(2) + (b2 - b1).prod(2) - inter + eps)
 
 
-def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_CIoU=False, eps=1e-7):
+def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_CIoU=False, SIoU=False, eps=1e-7):
     """
     Calculates the Intersection over Union (IoU) between bounding boxes.
 
@@ -115,7 +115,7 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_C
 
     # IoU
     iou = inter / union
-    if CIoU or DIoU or GIoU or scaled_CIoU:
+    if CIoU or DIoU or GIoU or scaled_CIoU or SIoU:
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
         if CIoU or DIoU or scaled_CIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
@@ -139,8 +139,26 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, scaled_C
                     return ciou + gamma * (1 - iou)  # Scaled CIoU
                 return ciou  # CIoU
             return iou - rho2 / c2  # DIoU
-        c_area = cw * ch + eps  # convex area
-        return iou - (c_area - union) / c_area  # GIoU https://arxiv.org/pdf/1902.09630.pdf
+        elif GIoU:
+            c_area = cw * ch + eps  # convex area
+            return iou - (c_area - union) / c_area  # GIoU
+        elif SIoU:
+            s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps
+            s_ch = (b2_y1 + b2_y2 - b1_y1 - b1_y2) * 0.5 + eps
+            sigma = torch.pow(s_cw ** 2 + s_ch ** 2, 0.5)
+            sin_alpha_1 = torch.abs(s_cw) / sigma
+            sin_alpha_2 = torch.abs(s_ch) / sigma
+            threshold = pow(2, 0.5) / 2
+            sin_alpha = torch.where(sin_alpha_1 > threshold, sin_alpha_2, sin_alpha_1)
+            angle_cost = torch.cos(torch.arcsin(sin_alpha) * 2 - math.pi / 2)
+            rho_x = (s_cw / cw) ** 2
+            rho_y = (s_ch / ch) ** 2
+            gamma = angle_cost - 2
+            distance_cost = 2 - torch.exp(gamma * rho_x) - torch.exp(gamma * rho_y)
+            omiga_w = torch.abs(w1 - w2) / torch.max(w1, w2)
+            omiga_h = torch.abs(h1 - h2) / torch.max(h1, h2)
+            shape_cost = torch.pow(1 - torch.exp(-1 * omiga_w), 4) + torch.pow(1 - torch.exp(-1 * omiga_h), 4)
+            return iou - 0.5 * (distance_cost + shape_cost)  # SIoU
     return iou  # IoU
 
 
